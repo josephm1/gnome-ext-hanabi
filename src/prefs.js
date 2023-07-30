@@ -15,153 +15,138 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const { Adw, Gio, Gtk } = imports.gi;
+/* exported init fillPreferencesWindow */
+
+const {Adw, Gio, Gtk} = imports.gi;
+const Gettext = imports.gettext;
 
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 
-function init() {}
+const haveContentFit = Gtk.get_minor_version() >= 8;
 
+const settings = ExtensionUtils.getSettings(
+    'io.github.jeffshee.hanabi-extension'
+);
+
+const Domain = Gettext.domain(Me.metadata.uuid);
+const _ = Domain.gettext;
+const ngettext = Domain.ngettext;
+
+/**
+ *
+ */
+function init() {
+    ExtensionUtils.initTranslations(Me.metadata.uuid);
+}
+
+/**
+ *
+ * @param window
+ */
 function fillPreferencesWindow(window) {
     // Create a preferences page and group
     const page = new Adw.PreferencesPage();
-    const generalGroup = new Adw.PreferencesGroup({ title: "General" });
+    const generalGroup = new Adw.PreferencesGroup({title: _('General')});
     page.add(generalGroup);
-    prefsRowVideoPath(window, generalGroup);
-    prefsRowBoolean(generalGroup, "Mute audio", "mute");
-    prefsVolume(generalGroup);
+    //different options drop down
+    prefsRowWallpaperMode(generalGroup);
+    prefsRowFitMode(generalGroup);
+    prefsRowBoolean(generalGroup, _('Mute Audio'), 'mute', '');
+    prefsRowInt(generalGroup, _('Volume Level'), 'volume', '', 0, 100, 1, 10);
 
-    const pauseGroup = new Adw.PreferencesGroup({ title: "Auto pause" });
+    // const pauseGroup = new Adw.PreferencesGroup({ title: "Auto Pause" });
     // page.add(pauseGroup);
+    // prefsRowBoolean(
+    //     pauseGroup,
+    //     "Pause on Fullscreen",
+    //     "pause-on-fullscreen",
+    //     "Pause playback when there is a fullscreen window"
+    // );
+    // prefsRowBoolean(
+    //     pauseGroup,
+    //     "Pause on Maximize",
+    //     "pause-on-maximize",
+    //     "Pause playback when there is a maximized window"
+    // );prefsRowFitMode
+    // prefsRowBoolean(
+    //     pauseGroup,
+    //     "Pause on Battery",
+    //     "pause-on-battery",
+    //     "Pause playback when device is on battery"
+    // );
+
+
+    const videoGroup = new Adw.PreferencesGroup({title: _('Video Settings')});
+    page.add(videoGroup);
+    prefsRowVideoPath(window, videoGroup);
+
+
+    const websiteGroup = new Adw.PreferencesGroup({title: _('Website Settings')});
+    page.add(websiteGroup);
+    //website settings
+    prefsRowWebsitePath(window, websiteGroup);
     prefsRowBoolean(
-        pauseGroup,
-        "Pause on fullscreen",
-        "pause-on-fullscreen",
-        "Pause playback when there is a fullscreen window"
+        websiteGroup,
+        _('Enable GPU'),
+        'gpu-mode',
+        _('This enables chrome to use GPU acceleration')
     );
-    prefsRowBoolean(
-        pauseGroup,
-        "Pause on maximize",
-        "pause-on-maximize",
-        "Pause playback when there is a maximized window"
-    );
-    prefsRowBoolean(
-        pauseGroup,
-        "Pause on battery",
-        "pause-on-battery",
-        "Pause playback when device is on battery"
-    );
+    prefsRowInt(websiteGroup, _('Frames Per Second (FPS)'), 'fps', '', 0, 144, 1, 10);
+
 
     const experimentalGroup = new Adw.PreferencesGroup({
-        title: "Experimental",
+        title: _('Experimental'),
     });
     page.add(experimentalGroup);
     prefsRowBoolean(
         experimentalGroup,
-        "Debug mode",
-        "debug-mode",
-        "Print debug messages to log"
+        _('Experimental VA Plugin'),
+        'enable-va',
+        _('Enable VA decoders which improve performance for Intel/AMD Wayland users')
     );
     prefsRowBoolean(
         experimentalGroup,
-        "Experimental VA plugins",
-        "enable-vah264dec-vavp9dec",
-        "Enable vah264dec and vavp9dec which improve performance for Intel/AMD Wayland users"
+        _('NVIDIA Stateless Decoders'),
+        'enable-nvsl',
+        _('Use new stateless NVIDIA decoders')
     );
+
+    const developerGroup = new Adw.PreferencesGroup({title: _('Developer')});
+    page.add(developerGroup);
+    prefsRowBoolean(
+        developerGroup,
+        _('Debug Mode'),
+        'debug-mode',
+        _('Print debug messages to log')
+    );
+    prefsRowBoolean(
+        developerGroup,
+        _('Force gtk4paintablesink'),
+        'force-gtk4paintablesink',
+        _('Force use of gtk4paintablesink for video playback')
+    );
+    prefsRowBoolean(
+        developerGroup,
+        _('Force GtkMediaFile'),
+        'force-mediafile',
+        _('Force use of GtkMediaFile for video playback')
+    );
+
     // Add our page to the window
     window.add(page);
 }
 
-function prefsRowVideoPath(window, prefsGroup) {
-    const title = "Video path";
-    const key = "video-path";
-
-    const settings = ExtensionUtils.getSettings(
-        "io.github.jeffshee.hanabi-extension"
-    );
-
-    let path = settings.get_string(key);
-    const row = new Adw.ActionRow({
-        title: title,
-        subtitle: `Current: ${path !== "" ? path : "None"}`,
-    });
-    prefsGroup.add(row);
-
-    function createDialog() {
-        let fileFilter = new Gtk.FileFilter();
-        fileFilter.add_mime_type("video/*");
-
-        let fileChooser = new Gtk.FileChooserDialog({
-            title: "Open File",
-            action: Gtk.FileChooserAction.OPEN,
-        });
-        fileChooser.set_modal(true);
-        fileChooser.set_transient_for(window);
-        fileChooser.add_button("Cancel", Gtk.ResponseType.CANCEL);
-        fileChooser.add_button("Open", Gtk.ResponseType.ACCEPT);
-        fileChooser.add_filter(fileFilter);
-
-        fileChooser.connect("response", (dialog, response_id) => {
-            if (response_id === Gtk.ResponseType.ACCEPT) {
-                let path = dialog.get_file().get_path();
-                settings.set_string(key, path);
-                row.subtitle = `Current: ${path !== "" ? path : "None"}`;
-            }
-            dialog.destroy();
-        });
-        return fileChooser;
-    }
-
-    let button = new Adw.ButtonContent({
-        icon_name: "document-open-symbolic",
-        label: "Open",
-    });
-
-    row.activatable_widget = button;
-    row.add_suffix(button);
-
-    row.connect("activated", () => {
-        dialog = createDialog();
-        dialog.show();
-    });
-}
-
-function prefsVolume(prefsGroup) {
-    const title = "Audio volume";
-    const key = "volume";
-
-    const settings = ExtensionUtils.getSettings(
-        "io.github.jeffshee.hanabi-extension"
-    );
-
-    const row = new Adw.ActionRow({ title: title });
-    prefsGroup.add(row);
-
-    const adjustment = new Gtk.Adjustment({
-        lower: 0,
-        upper: 100,
-        step_increment: 1,
-        page_increment: 10,
-        value: settings.get_int(key),
-    });
-    adjustment.connect("value-changed", () => {
-        settings.set_int(key, adjustment.value);
-    });
-    const spin = new Gtk.SpinButton({
-        adjustment: adjustment,
-    });
-
-    row.add_suffix(spin);
-}
-
-function prefsRowBoolean(prefsGroup, title, key, subtitle = "") {
-    // Use the same GSettings schema as in `extension.js`
-    const settings = ExtensionUtils.getSettings(
-        "io.github.jeffshee.hanabi-extension"
-    );
-
+/**
+ *
+ * @param prefsGroup
+ * @param title
+ * @param key
+ * @param subtitle
+ */
+function prefsRowBoolean(prefsGroup, title, key, subtitle) {
     // Create a new preferences row
-    const row = new Adw.ActionRow({ title: title, subtitle: subtitle });
+    const row = new Adw.ActionRow({title, subtitle});
     prefsGroup.add(row);
 
     // Create the switch and bind its value to the key
@@ -169,9 +154,236 @@ function prefsRowBoolean(prefsGroup, title, key, subtitle = "") {
         active: settings.get_boolean(key),
         valign: Gtk.Align.CENTER,
     });
-    settings.bind(key, toggle, "active", Gio.SettingsBindFlags.DEFAULT);
+    settings.bind(key, toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
 
     // Add the switch to the row
     row.add_suffix(toggle);
     row.activatable_widget = toggle;
+}
+
+/**
+ *
+ * @param prefsGroup
+ * @param title
+ * @param key
+ * @param subtitle
+ * @param lower
+ * @param upper
+ * @param stepIncrement
+ * @param pageIncrement
+ */
+function prefsRowInt(
+    prefsGroup,
+    title,
+    key,
+    subtitle,
+    lower,
+    upper,
+    stepIncrement,
+    pageIncrement
+) {
+    const row = new Adw.ActionRow({title, subtitle});
+    prefsGroup.add(row);
+
+    const adjustment = new Gtk.Adjustment({
+        lower,
+        upper,
+        step_increment: stepIncrement,
+        page_increment: pageIncrement,
+        value: settings.get_int(key),
+    });
+
+    adjustment.connect('value-changed', () => {
+        settings.set_int(key, adjustment.value);
+    });
+
+    const spin = new Gtk.SpinButton({
+        adjustment,
+        valign: Gtk.Align.CENTER,
+    });
+
+    row.add_suffix(spin);
+}
+
+/**
+ *
+ * @param window
+ * @param prefsGroup
+ */
+function prefsRowVideoPath(window, prefsGroup) {
+    const title = _('Video Path');
+    const key = 'video-path';
+
+    let path = settings.get_string(key);
+    const row = new Adw.ActionRow({
+        title,
+        subtitle: `${path !== '' ? path : _('None')}`,
+    });
+    prefsGroup.add(row);
+
+    /**
+     *
+     */
+    function createDialog() {
+        let fileFilter = new Gtk.FileFilter();
+        fileFilter.add_mime_type('video/*');
+
+        let fileChooser = new Gtk.FileChooserDialog({
+            title: _('Open File'),
+            action: Gtk.FileChooserAction.OPEN,
+        });
+        fileChooser.set_modal(true);
+        fileChooser.set_transient_for(window);
+        fileChooser.add_button(_('Cancel'), Gtk.ResponseType.CANCEL);
+        fileChooser.add_button(_('Open'), Gtk.ResponseType.ACCEPT);
+        fileChooser.add_filter(fileFilter);
+
+        fileChooser.connect('response', (dialog, responseId) => {
+            if (responseId === Gtk.ResponseType.ACCEPT) {
+                let _path = dialog.get_file().get_path();
+                settings.set_string(key, _path);
+                row.subtitle = `${_path !== '' ? _path : _('None')}`;
+            }
+            dialog.destroy();
+        });
+        return fileChooser;
+    }
+
+    let button = new Adw.ButtonContent({
+        icon_name: 'document-open-symbolic',
+        label: _('Open'),
+    });
+
+    row.activatable_widget = button;
+    row.add_suffix(button);
+
+    row.connect('activated', () => {
+        let dialog = createDialog();
+        dialog.show();
+    });
+}
+
+/**
+ *
+ * @param prefsGroup
+ */
+function prefsRowFitMode(prefsGroup) {
+    const title = _('Fit Mode');
+    const subtitle = _('Control how wallpaper fits within the monitor');
+    const tooltip = _(`
+    <b>Fill</b>: Stretch the wallpaper to fill the monitor.
+    <b>Contain</b>: Scale the wallpaper to fit the monitor (keep aspect ratio).
+    <b>Cover</b>: Scale the wallpaper to cover the monitor (keep aspect ratio).
+    <b>Scale-down</b>: Scale down the wallpaper to fit the monitor if needed, otherwise keep its original size.
+    `);
+
+    const items = Gtk.StringList.new([
+        _('Fill'),
+        _('Contain'),
+        _('Cover'),
+        _('Scale-down'),
+    ]);
+
+    const row = new Adw.ComboRow({
+        title,
+        subtitle,
+        model: items,
+        selected: settings.get_int('content-fit'),
+    });
+
+    if (haveContentFit) {
+        row.set_tooltip_markup(tooltip);
+    } else {
+        row.set_tooltip_markup(_('This feature requires Gtk 4.8 or above'));
+        row.set_sensitive(false);
+    }
+    prefsGroup.add(row);
+
+    row.connect('notify::selected', () => {
+        settings.set_int('content-fit', row.selected);
+    });
+}
+
+
+function prefsRowWallpaperMode(prefsGroup) {
+    const title = _('Wallpaper Mode');
+    const subtitle = _('Choose whether a video or a website is displayed as your wallpaper');
+    const tooltip = _(`
+    <b>Video</b>: Displays a video as your wallpaper.
+    <b>Local file</b>: Displays a local html file as your wallpaper .
+    <b>Online Website</b>: Displays a live online website as your wallpaper.
+    `);
+
+    const items = Gtk.StringList.new([
+        _('Video'),
+        _('Local Website'),
+        _('Online Websiten (URL)'),
+    ]);
+
+    const row = new Adw.ComboRow({
+        title,
+        subtitle,
+        model: items,
+        selected: settings.get_int('wallpaper-mode'),
+    });
+
+    prefsGroup.add(row);
+
+    row.connect('notify::selected', () => {
+        settings.set_int('wallpaper-mode', row.selected);
+    });
+}
+
+
+function prefsRowWebsitePath(window, prefsGroup) {
+    const title = _('Website Path');
+    const key = 'website-path';
+
+    let path = settings.get_string(key);
+    const row = new Adw.ActionRow({
+        title,
+        subtitle: `${path !== '' ? path : _('None')}`,
+    });
+    prefsGroup.add(row);
+
+    /**
+     *
+     */
+    function createDialog() {
+        let fileFilter = new Gtk.FileFilter();
+        fileFilter.add_mime_type('text/*');
+
+        let fileChooser = new Gtk.FileChooserDialog({
+            title: _('Open File'),
+            action: Gtk.FileChooserAction.OPEN,
+        });
+        fileChooser.set_modal(true);
+        fileChooser.set_transient_for(window);
+        fileChooser.add_button(_('Cancel'), Gtk.ResponseType.CANCEL);
+        fileChooser.add_button(_('Open'), Gtk.ResponseType.ACCEPT);
+        fileChooser.add_filter(fileFilter);
+
+        fileChooser.connect('response', (dialog, responseId) => {
+            if (responseId === Gtk.ResponseType.ACCEPT) {
+                let _path = dialog.get_file().get_path();
+                settings.set_string(key, _path);
+                row.subtitle = `${_path !== '' ? _path : _('None')}`;
+            }
+            dialog.destroy();
+        });
+        return fileChooser;
+    }
+
+    let button = new Adw.ButtonContent({
+        icon_name: 'document-open-symbolic',
+        label: _('Open'),
+    });
+
+    row.activatable_widget = button;
+    row.add_suffix(button);
+
+    row.connect('activated', () => {
+        let dialog = createDialog();
+        dialog.show();
+    });
 }
